@@ -1,0 +1,1269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LDSync Wheel (Secure Safety Light Suite)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/canvas-confetti/1.6.0/confetti.browser.min.js"></script>
+</head>
+<body class="bg-slate-950 text-white font-sans antialiased select-none">
+
+    <!-- SETUP / LOBBY SCREEN -->
+    <div id="setup-screen" class="fixed inset-0 bg-slate-950 flex flex-col items-center justify-center p-6 z-40">
+        <div class="max-w-sm w-full bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl text-center">
+            <h1 class="text-xl font-bold mb-1">Long-Distance Sync</h1>
+            <p class="text-slate-400 text-xs mb-6">Secure Safety Light Suite</p>
+
+            <button onclick="startAsHost()" class="w-full py-3.5 bg-indigo-600 hover:bg-indigo-500 font-semibold rounded-2xl shadow-lg transition mb-4 cursor-pointer text-sm active:scale-95">
+                Host New Session
+            </button>
+
+            <div class="relative flex py-2 items-center">
+                <div class="flex-grow border-t border-slate-800"></div>
+                <span class="flex-shrink mx-4 text-slate-500 text-[10px] tracking-wider">OR JOIN PARTNER</span>
+                <div class="flex-grow border-t border-slate-800"></div>
+            </div>
+
+            <div class="flex gap-2 mt-4">
+                <input id="room-input" type="text" maxlength="6" placeholder="6-CHAR CODE" class="flex-1 bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 uppercase text-center font-mono text-sm tracking-widest focus:outline-none focus:border-indigo-500 text-white">
+                <button onclick="startAsGuest()" class="px-5 py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 font-semibold rounded-2xl text-sm transition cursor-pointer active:scale-95">
+                    Join
+                </button>
+            </div>
+            <p id="lobby-status" class="text-xs text-amber-400 mt-4 min-h-[1rem]"></p>
+        </div>
+    </div>
+
+    <!-- HOST APPROVAL MODAL -->
+    <div id="approval-modal" class="hidden fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div class="max-w-xs w-full bg-slate-900 border border-indigo-500/40 rounded-3xl p-6 text-center shadow-2xl">
+            <div class="w-12 h-12 bg-indigo-500/20 text-indigo-400 rounded-full flex items-center justify-center mx-auto mb-3 text-lg font-bold">?</div>
+            <h3 class="text-base font-bold mb-1">Partner Requesting Entry</h3>
+            <p class="text-slate-400 text-xs mb-6">Someone entered your room code. Approve connection?</p>
+            <div class="flex gap-3">
+                <button onclick="respondToJoin(false)" class="flex-1 py-3 bg-slate-800 hover:bg-slate-700 rounded-2xl text-xs font-semibold transition cursor-pointer active:scale-95">Deny</button>
+                <button onclick="respondToJoin(true)" class="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 rounded-2xl text-xs font-semibold transition cursor-pointer active:scale-95">Approve</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN APP SCREEN -->
+    <div id="app-screen" class="hidden min-h-screen flex flex-col justify-between">
+        <div id="app-background" class="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 flex flex-col items-center justify-between p-4 pb-8">
+
+            <!-- HEADER -->
+            <div class="w-full max-w-sm flex items-center justify-between pt-2">
+                <div>
+                    <span class="text-[9px] uppercase tracking-widest text-slate-400 block">Session Code</span>
+                    <div class="flex items-center gap-1.5">
+                        <h2 id="room-code-display" class="font-mono font-bold text-sm tracking-widest text-white">------</h2>
+                        <button onclick="copyCode()" class="text-[10px] bg-white/10 hover:bg-white/20 px-2 py-0.5 rounded text-slate-200 cursor-pointer active:scale-95">Copy</button>
+                    </div>
+                </div>
+                <div id="partner-status-badge" class="px-2.5 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded-full text-[10px] font-medium animate-pulse">
+                    Waiting for Partner...
+                </div>
+            </div>
+
+            <!-- HOST CONTROLS -->
+            <div id="host-controls" class="hidden w-full max-w-sm bg-slate-900/80 backdrop-blur border border-slate-800 rounded-2xl p-3 my-2 shadow-lg">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-[10px] font-bold uppercase tracking-wider text-indigo-400">Host Mode Control</span>
+                    <button onclick="kickPartner()" class="text-[10px] text-slate-400 hover:text-red-400 underline cursor-pointer">Disconnect</button>
+                </div>
+                <div class="grid grid-cols-3 gap-1.5">
+                    <button id="mode-btn-playful" onclick="hostSetMode('playful')" class="py-1.5 rounded-xl text-[11px] font-bold bg-white text-slate-900 shadow transition cursor-pointer active:scale-95">Playful</button>
+                    <button id="mode-btn-seductive" onclick="hostSetMode('seductive')" class="py-1.5 rounded-xl text-[11px] font-medium bg-white/10 text-white hover:bg-white/25 transition cursor-pointer active:scale-95">Seductive</button>
+                    <button id="mode-btn-dark" onclick="hostSetMode('dark')" class="py-1.5 rounded-xl text-[11px] font-medium bg-white/10 text-white hover:bg-white/25 transition cursor-pointer active:scale-95">Dark D/s</button>
+                </div>
+            </div>
+
+            <!-- RED LIGHT ALERT -->
+            <div id="red-alert-banner" class="hidden w-full max-w-sm bg-red-600/95 border border-red-400 text-white px-3 py-2.5 rounded-2xl my-2 text-center font-bold text-xs shadow-lg animate-bounce">
+                RED LIGHT TRIGGERED — Pause & Check In Immediately
+            </div>
+
+            <!-- WHEEL CONTAINER -->
+            <div class="flex-1 flex flex-col items-center justify-center my-auto">
+                <div class="relative w-64 h-64 flex items-center justify-center">
+                    <div class="absolute -top-3 z-20 w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[18px] border-t-white drop-shadow-md"></div>
+                    <div id="wheel-group" class="w-full h-full relative cursor-pointer" onclick="requestSpin()">
+                        <svg id="wheel-svg" viewBox="0 0 400 400" class="w-full h-full drop-shadow-2xl"></svg>
+                        <div class="absolute inset-0 m-auto w-16 h-16 bg-slate-900 border-4 border-white/90 rounded-full flex items-center justify-center shadow-xl">
+                            <span class="text-[10px] font-extrabold tracking-widest text-white">SPIN</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- FOOTER ACTION -->
+            <div class="w-full max-w-sm mt-2">
+                <button id="spin-btn" onclick="requestSpin()" class="w-full py-4 bg-white text-slate-950 font-bold rounded-2xl shadow-xl hover:bg-slate-100 transition cursor-pointer active:scale-[0.98] text-sm">
+                    Spin Category Wheel
+                </button>
+                
+                <div class="flex items-center justify-between bg-slate-900/80 backdrop-blur border border-slate-800 rounded-2xl px-3 py-2 mt-3">
+                    <span class="text-[11px] font-medium text-slate-300">Safety Check:</span>
+                    <div class="flex gap-2">
+                        <button id="safety-green" onclick="triggerSafety('green')" class="w-6 h-6 rounded-full bg-emerald-500 shadow transition ring-2 ring-white cursor-pointer" title="Green"></button>
+                        <button id="safety-yellow" onclick="triggerSafety('yellow')" class="w-6 h-6 rounded-full bg-amber-500 shadow transition cursor-pointer" title="Yellow"></button>
+                        <button id="safety-red" onclick="triggerSafety('red')" class="w-6 h-6 rounded-full bg-red-600 shadow transition cursor-pointer" title="Red"></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCRATCH CARDS MODAL -->
+    <div id="scratch-modal" class="hidden fixed inset-0 bg-black/95 backdrop-blur-md flex items-center justify-center p-4 z-[9999]">
+        <div class="max-w-xs w-full bg-slate-900 border border-slate-700 rounded-3xl p-5 text-center shadow-2xl relative">
+            <span id="scratch-category-badge" class="px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-widest bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">Category</span>
+            <h3 id="scratch-modal-title" class="text-base font-bold mt-2 mb-1">Pick a Secret Card</h3>
+            <p id="scratch-modal-subtitle" class="text-slate-400 text-[11px] mb-4">Tap one of the mystery cards below to select it blindly.</p>
+
+            <div id="cards-container" class="space-y-2.5 mb-4 relative z-20">
+                <!-- Injected dynamically -->
+            </div>
+
+            <div id="scratch-action-area" class="min-h-[2.5rem] relative z-20">
+                <!-- Populated once a card is confirmed -->
+            </div>
+        </div>
+    </div>
+
+    <!-- ACTIVE PROMPT RESULT MODAL -->
+    <div id="result-modal" class="hidden fixed inset-0 bg-black/95 backdrop-blur-md flex items-center justify-center p-4 z-[9999]">
+        <div class="max-w-xs w-full bg-slate-900 border border-slate-700 rounded-3xl p-5 text-center shadow-2xl relative max-h-[90vh] flex flex-col">
+            <div class="flex items-center justify-center gap-1.5 mb-1 flex-shrink-0">
+                <span id="result-category-badge" class="px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-widest bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">Category</span>
+                <span id="result-role-badge" class="hidden px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-widest bg-amber-500/20 text-amber-300 border border-amber-500/40">Role Shift</span>
+            </div>
+            <h3 id="result-title" class="text-base font-bold mt-2 mb-1 text-white flex-shrink-0">Prompt Title</h3>
+            <p id="result-desc" class="text-slate-300 text-xs mb-3 leading-relaxed bg-slate-950/50 p-3 rounded-xl border border-slate-800 text-left flex-shrink-0"></p>
+
+            <!-- PRE-BUILT CHOICE LIST CONTAINER -->
+            <div id="choices-container" class="hidden mb-3 overflow-y-auto max-h-40 space-y-1.5 pr-1 text-left flex-grow">
+                <!-- Injected choice buttons -->
+            </div>
+
+            <div id="revealed-cards-list" class="space-y-1.5 mb-3 text-left flex-shrink-0">
+                <!-- Populated upon final pick -->
+            </div>
+
+            <div id="modal-action-area" class="flex-shrink-0">
+                <!-- Completion button -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const MODES = {
+            playful: {
+                name: "Playful",
+                bg: "from-indigo-900 via-purple-900 to-slate-900",
+                categories: ["Quick", "Banter", "Spicy", "Cozy"],
+                colors: ["#4f46e5", "#7c3aed", "#db2777", "#0d9488"],
+                prompts: [
+                    { 
+                        cat: "Quick", title: "60-Sec Voice Note", 
+                        desc: "Record and send a 60-second voice note right now picking one of these exact topics:",
+                        choices: [
+                            "Whisper a ridiculous conspiracy theory in a deadpan serious tone",
+                            "Describe your absolute favorite physical feature of your partner in detail",
+                            "Rate our future wedding cake flavor ideas out of 10 with dramatic reviews",
+                            "Sing the chorus of the cheesiest 2000s song you know",
+                            "Impersonate your partner's morning voice right now"
+                        ]
+                    },
+                    { 
+                        cat: "Quick", title: "Camera Roll Roulette", 
+                        desc: "Open your photo gallery, scroll up blindly, and pick one of these to send immediately:",
+                        choices: [
+                            "The weirdest facial expression selfie you've ever saved",
+                            "A screenshot of the last text conversation you had with a friend",
+                            "The most embarrassing photo of you from 5 years ago",
+                            "A photo of the last snack or drink you consumed",
+                            "A picture of your view out the nearest window right now"
+                        ]
+                    },
+                    { 
+                        cat: "Quick", title: "3-Emoji Mood", 
+                        desc: "Pick 3 emojis from this list to describe your current vibe. Let your partner decode what it means:",
+                        choices: ["😈 🍷 🔥", "🧸 🌧️ 💤", "🌮 🤪 🎸", "👀 ⛓️ 🧊", "🚀 🪐 ✨", "💀 ☕ 🌪️"]
+                    },
+                    { 
+                        cat: "Quick", title: "Song In Your Head", 
+                        desc: "Pick a vibe from this list and send a 15-second voice clip humming or singing it:",
+                        choices: [
+                            "An angsty pop-punk song from high school",
+                            "A slow, dramatic bedroom-pop ballad",
+                            "An absurdly upbeat dance club anthem",
+                            "A smooth, sultry R&B slow jam",
+                            "A cheesy commercial jingle stuck in your head"
+                        ]
+                    },
+                    { 
+                        cat: "Quick", title: "Arm's-Reach Snap", 
+                        desc: "Take a photo of one of these items within arm's reach without standing up:",
+                        choices: [
+                            "The closest pillow or blanket near you",
+                            "Whatever electronic device charger is plugged in",
+                            "The oddest random object sitting on your desk or table",
+                            "A book, notebook, or piece of paper nearby",
+                            "Your shoes right now"
+                        ]
+                    },
+                    { 
+                        cat: "Quick", title: "Rapid This or That", 
+                        desc: "Take turns choosing one option from this rapid-fire list. No overthinking!",
+                        choices: [
+                            "Midnight rooftop stargazing OR cozy rainy morning in bed",
+                            "Being completely blindfolded OR being tied down",
+                            "Whispered dirty talk across a crowded room OR locked in a private room together",
+                            "Waking up wrapped in each other's arms OR falling asleep on an active video call",
+                            "Sweet innocent cuddles OR intense heavy breathing silence"
+                        ]
+                    },
+                    { 
+                        cat: "Quick", title: "30-Sec Compliment Sprint", 
+                        desc: "Set a 30-second timer and rapid-fire compliments using this theme:",
+                        choices: [
+                            "Compliment every single facial feature one by one",
+                            "List 5 things you love about their personality",
+                            "Compliment their voice, laugh, and the way they text",
+                            "List 3 things they do that drive you crazy in the best way",
+                            "Compliment their style, vibe, and energy"
+                        ]
+                    },
+                    { 
+                        cat: "Quick", title: "Silly Hot Take", 
+                        desc: "Pick a harmless controversial opinion from this list and debate it seriously for 60 seconds:",
+                        choices: [
+                            "Cereal is definitely a soup",
+                            "Pineapple on pizza is a culinary masterpiece",
+                            "Cold pizza tastes better than hot fresh pizza",
+                            "Water has a very distinct metallic flavor",
+                            "Superheroes are vastly overrated compared to villains"
+                        ]
+                    },
+                    { 
+                        cat: "Quick", roleShift: true, title: "Sub's Veto Card", 
+                        desc: "Role Shift: For the next 15 minutes, she gets one free veto card over any minor topic or choice—no questions asked."
+                    },
+
+                    { 
+                        cat: "Banter", title: "Fake Accent Challenge", 
+                        desc: "Talk in one of these ridiculous fake accents for the next 3 minutes. First to break character loses:",
+                        choices: ["Over-the-top aristocratic British royalty", "Sassy 1920s mobster boss", "Clueless enthusiastic valley surfer", "Dramatic overacting French villain", "Robotic sci-fi android"]
+                    },
+                    { 
+                        cat: "Banter", title: "No-Blink Staredown", 
+                        desc: "Stare directly into your phone camera without blinking or smiling. First person to laugh or blink loses."
+                    },
+                    { 
+                        cat: "Banter", title: "Word Sync Game", 
+                        desc: "Count to 3 out loud together, then both immediately pick a category below and say a matching word at the exact same time:",
+                        choices: ["Category: Spicy foods", "Category: Wild animals", "Category: Kinky bedroom words", "Category: Colors of underwear", "Category: Famous movie villains"]
+                    },
+                    { 
+                        cat: "Banter", title: "Object Monologue", 
+                        desc: "Pick up any random item near you (like a pen or cup) and give a 45-second dramatic soap-opera monologue about how much you hate/love it."
+                    },
+                    { 
+                        cat: "Banter", title: "20 Questions", 
+                        desc: "Think of a secret object in your room using one of these themes. Your partner has 15 Yes/No questions to guess:",
+                        choices: ["Theme: Something on your bed", "Theme: Something you use when you're horny", "Theme: Something in your kitchen", "Theme: Something you're wearing right now"]
+                    },
+                    { 
+                        cat: "Banter", title: "Worst Movie Pitch", 
+                        desc: "Take turns adding one sentence each to invent the absolute worst possible Hollywood movie starring the two of you based on this title:",
+                        choices: ["Title: Attack of the Killer Cuddle Pillows", "Title: 50 Shades of Boring Zoom Calls", "Title: The Vampire Who Refused to Text Back", "Title: Journey to the Center of My Camera Roll"]
+                    },
+                    { 
+                        cat: "Banter", title: "Impression Match", 
+                        desc: "Do a 15-second impression choosing from this list:",
+                        choices: ["Your partner when they're waiting for their food delivery", "Your partner when they catch you staring at them", "Your partner reading a spicy text message", "Your partner when you steal the blanket"]
+                    },
+                    { 
+                        cat: "Banter", title: "Honest First Impression", 
+                        desc: "Take turns sharing one funny detail about what you honestly thought of each other when you first met, using these prompts:",
+                        choices: ["The exact moment you knew you were in trouble", "What you thought of their very first text message", "The most embarrassing thought you had on day one"]
+                    },
+                    { 
+                        cat: "Banter", roleShift: true, title: "Sub's Silly Dare", 
+                        desc: "Role Shift: She invents one harmless, funny 60-second dare on the spot that you must perform on camera."
+                    },
+
+                    { 
+                        cat: "Spicy", title: "Intimate Memory", 
+                        desc: "Tell your partner honestly: what specific physical moment or memory of us do you replay most often in your head?",
+                        choices: [
+                            "The very first time we kissed",
+                            "The most intense late-night video call we ever had",
+                            "A specific outfit they wore that drove you wild",
+                            "The last time we were tangled up in bed together",
+                            "A whispered secret they told you when nobody else was around"
+                        ]
+                    },
+                    { 
+                        cat: "Spicy", title: "Whisper Audio Note", 
+                        desc: "Send a 45-second voice note using your absolute lowest, closest-to-the-mic whisper answering one of these:",
+                        choices: [
+                            "Tell them exactly what you want to do to them the second you walk through the door",
+                            "Describe how their voice makes your body react when you're alone in bed",
+                            "Whisper a naughty command they have to follow right now",
+                            "Tell them what you're wearing (or not wearing) underneath right now"
+                        ]
+                    },
+                    { 
+                        cat: "Spicy", title: "Moody Close-Up Photo", 
+                        desc: "Take a dark, moody, cropped photo focusing on one of these areas:",
+                        choices: ["Just your collarbone and lower jaw", "Your lips biting down slightly", "Your hand gripping your thigh or knee", "Your eyes looking up through your lashes"]
+                    },
+                    { 
+                        cat: "Spicy", title: "3-Minute Sensory Story", 
+                        desc: "One person closes their eyes for 3 minutes while the other slowly whispers a detailed sensory scenario chosen from here:",
+                        choices: [
+                            "Being pinned against a hotel room door in the dark",
+                            "A slow, agonizingly gentle massage after a long day apart",
+                            "Being woken up in the middle of the night by wandering hands",
+                            "Being blindfolded and guided step-by-step into bed"
+                        ]
+                    },
+                    { 
+                        cat: "Spicy", title: "Silent Eye Contact", 
+                        desc: "Look straight into your video camera lens in total silence for 60 seconds. Let the anticipation build without speaking."
+                    },
+                    { 
+                        cat: "Spicy", title: "Reunion Favor IOU", 
+                        desc: "Promise one specific physical favor or treat to be cashed in during the very first hour of seeing each other next. Pick a category:",
+                        choices: ["A strict 10-minute uninterrupted makeout session", "A full-body tension massage with zero clothes allowed", "Absolute obedience to whatever they demand for the first hour", "Being fed your favorite treat while sitting on their lap"]
+                    },
+                    { 
+                        cat: "Spicy", title: "Close-Up Angle", 
+                        desc: "Move your phone camera to a much closer, different angle for the next 5 minutes of your call."
+                    },
+                    { 
+                        cat: "Spicy", title: "Blush Challenge", 
+                        desc: "Try to make your partner visibly blush using only sweet, flattering, or mildly wicked words in under 2 minutes."
+                    },
+                    { 
+                        cat: "Spicy", roleShift: true, title: "Sub's Tease Request", 
+                        desc: "Role Shift: She chooses one specific photo angle or voice note prompt you have to send her right now."
+                    },
+
+                    { 
+                        cat: "Cozy", title: "Parallel Silence", 
+                        desc: "Stay connected on call for 10 minutes with zero pressure to talk. Just exist together while doing your own chores or scrolling."
+                    },
+                    { 
+                        cat: "Cozy", title: "Grounding Check-In", 
+                        desc: "Go around and share one thing you can physically feel, one thing you hear, and one thing you see right now."
+                    },
+                    { 
+                        cat: "Cozy", title: "Water & Stretch Break", 
+                        desc: "Both take a big drink of water right now, stand up, and do a slow 30-second shoulder and neck roll."
+                    },
+                    { 
+                        cat: "Cozy", title: "Dark Pillow Chat", 
+                        desc: "Turn off your video cameras, lay your phone flat on your pillow, and talk softly in the dark for 10 minutes."
+                    },
+                    { 
+                        cat: "Cozy", title: "Brain Dump", 
+                        desc: "Take 3 uninterrupted minutes each to vent or talk about every random thought or stressor in your head. No fixing, just listening."
+                    },
+                    { 
+                        cat: "Cozy", title: "Comfort Memory", 
+                        desc: "Describe one quiet, ordinary memory of us together that always makes you feel safe and grounded."
+                    },
+                    { 
+                        cat: "Cozy", title: "Sync Breathing", 
+                        desc: "Take 5 slow, synchronized breaths together: inhale for 4 seconds, hold for 2, exhale for 4."
+                    },
+                    { 
+                        cat: "Cozy", title: "Morning Daydream", 
+                        desc: "Spend 3 minutes describing a hyper-specific, cozy future morning together from waking up to making coffee."
+                    },
+                    { 
+                        cat: "Cozy", roleShift: true, title: "Sub's Comfort Order", 
+                        desc: "Role Shift: She assigns you one cozy check-in ritual or asks for a specific reassurance/story before bed."
+                    }
+                ]
+            },
+            seductive: {
+                name: "Seductive",
+                bg: "from-rose-950 via-red-950 to-stone-950",
+                categories: ["Voice", "Visual", "Tension", "Dares"],
+                colors: ["#be123c", "#9f1239", "#881337", "#b45309"],
+                prompts: [
+                    { 
+                        cat: "Voice", title: "Heavy Breath Audio", 
+                        desc: "Send a 30-second voice note taking slow, deep, steady breaths right into your microphone without speaking.",
+                        choices: [
+                            "Breathe slowly while imagining they have their hand on your chest",
+                            "Whisper 'I need you right now' halfway through your breathing audio",
+                            "Match your breaths to the rhythm of a slow countdown"
+                        ]
+                    },
+                    { 
+                        cat: "Voice", title: "Desire Confession", 
+                        desc: "Tell your partner out loud the exact fantasy involving them that has been on your mind all day.",
+                        choices: [
+                            "What you want to do to them the moment you shut the hotel door",
+                            "A naughty dream you had about them last week",
+                            "The exact spot you want to touch them first when you meet"
+                        ]
+                    },
+                    { 
+                        cat: "Voice", title: "Craving Whisper", 
+                        desc: "Whisper 3 specific things you crave about touching your partner right into your microphone."
+                    },
+                    { 
+                        cat: "Voice", title: "Layer Narration", 
+                        desc: "Slowly narrate out loud while pretending to remove each layer of what you are wearing item by item."
+                    },
+                    { 
+                        cat: "Voice", title: "Sound Missing", 
+                        desc: "Tell them the exact sound they make that you miss hearing most when you are far apart."
+                    },
+                    { 
+                        cat: "Voice", title: "1-Min Breath Match", 
+                        desc: "Put your phone on speaker and match each other's breathing pace in sync for 1 full minute."
+                    },
+                    { 
+                        cat: "Voice", title: "Late-Night Voice", 
+                        desc: "Switch to your deepest, slowest, most intimate late-night talking voice for the next 3 minutes."
+                    },
+                    { 
+                        cat: "Voice", title: "First 10 Mins Reunion", 
+                        desc: "Describe in vivid, step-by-step detail what will happen in the first 10 minutes behind a closed door when you reunite."
+                    },
+                    { 
+                        cat: "Voice", roleShift: true, title: "Sub's Audio Demand", 
+                        desc: "Role Shift: She tells you exactly what scenario or dirty talk she wants recorded in a 45-second voice note for her."
+                    },
+
+                    { 
+                        cat: "Visual", title: "Moody Silhouette", 
+                        desc: "Turn off your main lights and send a moody silhouette photo against a doorway or lamp."
+                    },
+                    { 
+                        cat: "Visual", title: "Collarbone Focus", 
+                        desc: "Send a close-up photo focusing only on your neck, collarbone, and jawline."
+                    },
+                    { 
+                        cat: "Visual", title: "Smirk Frame", 
+                        desc: "Send a close-up photo of your lips with a slow, knowing smirk."
+                    },
+                    { 
+                        cat: "Visual", title: "Bed POV Shot", 
+                        desc: "Send a photo showing your exact relaxing position in bed right now from your own point of view."
+                    },
+                    { 
+                        cat: "Visual", title: "Hands Placement", 
+                        desc: "Send a photo of your hands resting right where you wish your partner's hands were right now."
+                    },
+                    { 
+                        cat: "Visual", title: "Mirror Gaze", 
+                        desc: "Take a quick mirror snapshot while looking intensely into your phone camera lens."
+                    },
+                    { 
+                        cat: "Visual", title: "Single Lamp Glow", 
+                        desc: "Turn off all overhead lights except one warm lamp and show the atmosphere on video."
+                    },
+                    { 
+                        cat: "Visual", title: "Blanket Wrap", 
+                        desc: "Wrap yourself in a sheet or blanket leaving just enough skin exposed for a teasing snapshot."
+                    },
+                    { 
+                        cat: "Visual", roleShift: true, title: "Sub's Camera Setup", 
+                        desc: "Role Shift: She directs your camera angle, lighting, and pose for a live 30-second visual preview."
+                    },
+
+                    { 
+                        cat: "Tension", title: "Guided Touch", 
+                        desc: "Verbally guide your partner over video on where and how slowly to touch themselves."
+                    },
+                    { 
+                        cat: "Tension", title: "Unbroken Gaze", 
+                        desc: "Hold 90 seconds of completely unwavering eye contact on camera without a single word spoken."
+                    },
+                    { 
+                        cat: "Tension", title: "Torturous Countdown", 
+                        desc: "Count down slowly out loud from 10 to 1 at a painful, agonizingly slow pace while holding eye contact."
+                    },
+                    { 
+                        cat: "Tension", title: "Watch Only", 
+                        desc: "Watch your partner touch themselves for 2 full minutes while keeping your own hands completely still."
+                    },
+                    { 
+                        cat: "Tension", title: "Physical Reaction", 
+                        desc: "Describe out loud the exact physical reaction their voice or look is causing in your body right now."
+                    },
+                    { 
+                        cat: "Tension", title: "Intense Memory", 
+                        desc: "Remind your partner of the single most intense physical moment you've ever shared together."
+                    },
+                    { 
+                        cat: "Tension", title: "Slow-Motion Rule", 
+                        desc: "Every physical movement you make on camera for the next 2 minutes must be done in deliberate slow motion."
+                    },
+                    { 
+                        cat: "Tension", title: "Whisper Rule", 
+                        desc: "For the next 5 minutes, neither of you is allowed to speak above a soft whisper."
+                    },
+                    { 
+                        cat: "Tension", roleShift: true, title: "Sub's Hands-Off Order", 
+                        desc: "Role Shift: She places you under a 3-minute hands-off rule while she teases you on camera."
+                    },
+
+                    { 
+                        cat: "Dares", title: "Reunion Stakes", 
+                        desc: "Name the exact sensual penalty or task the loser of the next wheel spin owes when you reunite."
+                    },
+                    { 
+                        cat: "Dares", title: "Single Command", 
+                        desc: "The spinner gives one seductive command that the other person must execute immediately."
+                    },
+                    { 
+                        cat: "Dares", title: "Truth or Layer", 
+                        desc: "Answer an unfiltered intimate question honestly, or remove one article of clothing right now."
+                    },
+                    { 
+                        cat: "Dares", title: "Pillow Demo", 
+                        desc: "Use your pillow on camera to demonstrate the exact pace or pressure you want next time."
+                    },
+                    { 
+                        cat: "Dares", title: "Anchor Hand", 
+                        desc: "Keep one hand pressed firmly on your own body where you want your partner while talking for 3 minutes."
+                    },
+                    { 
+                        cat: "Dares", title: "Daytime Confession", 
+                        desc: "Confess an explicit thought you had about your partner during a completely normal, boring moment today."
+                    },
+                    { 
+                        cat: "Dares", title: "Pace Control", 
+                        desc: "Hand over complete verbal control of your speed and rhythm to your partner for 3 minutes."
+                    },
+                    { 
+                        cat: "Dares", title: "Heat Check", 
+                        desc: "Rate your current arousal out loud from 1 to 10 and describe what would push it straight to a 10."
+                    },
+                    { 
+                        cat: "Dares", roleShift: true, title: "Sub's Direct Task", 
+                        desc: "Role Shift: She assigns you one specific physical or verbal task to perform for her pleasure right now."
+                    }
+                ]
+            },
+            dark: {
+                name: "Dark D/s",
+                bg: "from-black via-purple-950 to-red-950",
+                categories: ["Power", "Edging", "Taboo", "Explicit"],
+                colors: ["#581c87", "#7f1d1d", "#312e81", "#831843"],
+                prompts: [
+                    { 
+                        cat: "Power", title: "Permission Protocol", 
+                        desc: "Sub must formally ask permission ('May I speak, Dominant?') before speaking or shifting posture for the next 5 minutes."
+                    },
+                    { 
+                        cat: "Power", title: "Kneeling Posture", 
+                        desc: "Sub assumes a kneeling or designated submissive posture in camera frame and holds it steady until released."
+                    },
+                    { 
+                        cat: "Power", title: "Title & Pledge", 
+                        desc: "Sub recites their obedience pledge and addresses their Dominant strictly by their proper title for the next 5 minutes."
+                    },
+                    { 
+                        cat: "Power", title: "Immediate Task", 
+                        desc: "Dom assigns one immediate physical, sensory, or posture task to be completed perfectly on camera."
+                    },
+                    { 
+                        cat: "Power", title: "Gaze Discipline", 
+                        desc: "Sub must hold the exact eye-contact rule (either locked or downcast) set by the Dom during inspection."
+                    },
+                    { 
+                        cat: "Power", title: "Silence Rule", 
+                        desc: "Absolute silence from the sub for 4 minutes—only non-verbal head nods or permitted answers allowed."
+                    },
+                    { 
+                        cat: "Power", title: "Gear Check", 
+                        desc: "Show on camera what restraints, collars, or tools you have ready and waiting for your next in-person session."
+                    },
+                    { 
+                        cat: "Power", title: "Obedience Drill", 
+                        desc: "Execute 3 rapid posture or position commands given by the Dom back-to-back without a second of hesitation."
+                    },
+                    { 
+                        cat: "Power", roleShift: true, title: "Switch Protocol (10 Mins)", 
+                        desc: "Role Shift: Dynamic flips for 10 minutes. She steps into control and assigns you a task, posture, or verbal order."
+                    },
+
+                    { 
+                        cat: "Edging", title: "Stopwatch Edge", 
+                        desc: "Dom controls a live stopwatch. Sub must bring themselves to the edge of climax and freeze completely on command."
+                    },
+                    { 
+                        cat: "Edging", title: "Stroke Ration", 
+                        desc: "Dom dictates the exact number of strokes or seconds of touch allowed before issuing a mandatory stop."
+                    },
+                    { 
+                        cat: "Edging", title: "Metronome Pace", 
+                        desc: "Sub must strictly match the verbal rhythm and speed counted out by the Dom."
+                    },
+                    { 
+                        cat: "Edging", title: "Freeze Command", 
+                        desc: "At any random moment over the next 3 minutes, Dom calls 'Freeze'—sub must hold completely still instantly."
+                    },
+                    { 
+                        cat: "Edging", title: "Hands Behind Back", 
+                        desc: "Reach 90% arousal immediately, then put both hands flat behind your back for 2 full minutes."
+                    },
+                    { 
+                        cat: "Edging", title: "Controlled Breathing", 
+                        desc: "Regulate your breathing strictly to your Dom's count while staying right on the brink."
+                    },
+                    { 
+                        cat: "Edging", title: "Beg for Release", 
+                        desc: "Sub must formally ask and beg for permission to finish. Dom decides whether yes, no, or one more edge is granted."
+                    },
+                    { 
+                        cat: "Edging", title: "Denial Tease", 
+                        desc: "5 continuous minutes of intense teasing with zero permission to climax granted at the end."
+                    },
+                    { 
+                        cat: "Edging", roleShift: true, title: "Sub Controls Timer", 
+                        desc: "Role Shift: She holds the stopwatch and dictates when, how fast, or if you are allowed to touch for 5 minutes."
+                    },
+
+                    { 
+                        cat: "Taboo", title: "Taboo Confession", 
+                        desc: "Confess a dark or taboo kink scenario you want to explore together with zero judgment.",
+                        choices: [
+                            "A public place fantasy where you could get caught",
+                            "A dynamic or roleplay you've been too shy to ask for",
+                            "A boundary you're curious about pushing safely"
+                        ]
+                    },
+                    { 
+                        cat: "Taboo", title: "Punishment Task", 
+                        desc: "Dom assigns a specific, consensual punishment task for a real or playfully invented rule infraction."
+                    },
+                    { 
+                        cat: "Taboo", title: "Household Tool", 
+                        desc: "Retrieve a safe household item (like a tie, belt, or ice cube) to incorporate into the next 5 minutes."
+                    },
+                    { 
+                        cat: "Taboo", title: "Praise or Degradation", 
+                        desc: "Dom delivers 60 seconds of intense, agreed-upon praise or verbal degradation while sub listens."
+                    },
+                    { 
+                        cat: "Taboo", title: "Ownership Check", 
+                        desc: "Sub states clearly out loud who owns their pleasure and obedience tonight."
+                    },
+                    { 
+                        cat: "Taboo", title: "Restraint Blueprint", 
+                        desc: "Describe in explicit detail how you want to be bound, blindfolded, or immobilized next time you meet."
+                    },
+                    { 
+                        cat: "Taboo", title: "Edge of Limits", 
+                        desc: "Discuss one hard or soft limit and how to safely push right up to the edge of a soft limit."
+                    },
+                    { 
+                        cat: "Taboo", title: "Rapid Kink Q&A", 
+                        desc: "Answer 3 rapid-fire vulnerable or kinky questions with complete, unfiltered honesty."
+                    },
+                    { 
+                        cat: "Taboo", roleShift: true, title: "Sub's Punishment Order", 
+                        desc: "Role Shift: She gets to assign YOU one playful or spicy punishment task for keeping her waiting."
+                    },
+
+                    { 
+                        cat: "Explicit", title: "Raw Arousal Note", 
+                        desc: "Send an unedited, explicit voice note detailing your exact physical state and arousal right now."
+                    },
+                    { 
+                        cat: "Explicit", title: "Camera Reveal", 
+                        desc: "Sub follows Dom's exact framing instructions for a brief, explicit live camera reveal."
+                    },
+                    { 
+                        cat: "Explicit", title: "Directed Self-Play", 
+                        desc: "Sub obeys step-by-step explicit self-touch instructions while Dom watches and directs."
+                    },
+                    { 
+                        cat: "Explicit", title: "Command Monologue", 
+                        desc: "Dom delivers a raw, explicit monologue detailing exactly how they will use the sub next."
+                    },
+                    { 
+                        cat: "Explicit", title: "Denial Order", 
+                        desc: "Dom issues an official orgasm denial or chastity rule for the next 24 hours (if agreed)."
+                    },
+                    { 
+                        cat: "Explicit", title: "Blindfolded Audio", 
+                        desc: "Sub closes eyes or puts on a blindfold, relying 100% on Dom's explicit voice commands."
+                    },
+                    { 
+                        cat: "Explicit", title: "Devotion Oath", 
+                        desc: "Sub kneels and swears explicit obedience for the remainder of the session."
+                    },
+                    { 
+                        cat: "Explicit", title: "Mandatory Aftercare", 
+                        desc: "Immediate 5-minute warm grounding: grab water, drop titles, and give affectionate praise."
+                    },
+                    { 
+                        cat: "Explicit", roleShift: true, title: "Sub's Explicit Demand", 
+                        desc: "Role Shift: She gets one explicit, unrestricted request—you must perform whatever she asks on camera."
+                    }
+                ]
+            }
+        };
+
+        let peer = null;
+        let conn = null;
+        let pendingConn = null;
+        let isHost = false;
+        let myRole = ""; 
+        let roomCode = "";
+        let currentMode = "playful";
+        let currentAngle = 0;
+        let isSpinning = false;
+        let safetyLevel = "green";
+        let redLightTriggeredBy = null; // Tracks who pulled the red light
+        let spinTimer = null;
+        let spinnerRole = ""; 
+        let currentScratchCards = [];
+        let selectedCardIndex = null;
+        let usedPrompts = { playful: new Set(), seductive: new Set(), dark: new Set() };
+
+        function generateCode() {
+            const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+            let res = "";
+            for (let i = 0; i < 6; i++) res += chars.charAt(Math.floor(Math.random() * chars.length));
+            return res;
+        }
+
+        window.startAsHost = function() {
+            isHost = true;
+            myRole = 'host';
+            roomCode = generateCode();
+            document.getElementById('lobby-status').innerText = "Initializing secure P2P room...";
+
+            peer = new Peer("ldsync-" + roomCode);
+
+            peer.on('open', (id) => {
+                document.getElementById('setup-screen').classList.add('hidden');
+                document.getElementById('app-screen').classList.remove('hidden');
+                document.getElementById('host-controls').classList.remove('hidden');
+                document.getElementById('room-code-display').innerText = roomCode;
+                applyModeUI(currentMode);
+            });
+
+            peer.on('connection', (incomingConn) => {
+                if (conn && conn.open) {
+                    incomingConn.on('open', () => {
+                        incomingConn.send({ type: 'REJECTED', reason: 'Room already full (2/2).' });
+                        setTimeout(() => incomingConn.close(), 300);
+                    });
+                    return;
+                }
+                pendingConn = incomingConn;
+                document.getElementById('approval-modal').classList.remove('hidden');
+            });
+
+            peer.on('error', (err) => {
+                document.getElementById('lobby-status').innerText = "Connection error: " + err.type;
+            });
+        };
+
+        window.respondToJoin = function(approved) {
+            document.getElementById('approval-modal').classList.add('hidden');
+            if (!pendingConn) return;
+
+            if (!approved) {
+                pendingConn.send({ type: 'REJECTED', reason: 'Host declined entry.' });
+                setTimeout(() => pendingConn.close(), 300);
+                pendingConn = null;
+                return;
+            }
+
+            conn = pendingConn;
+            pendingConn = null;
+            setupConnectionHandlers(conn);
+
+            conn.send({
+                type: 'APPROVED',
+                mode: currentMode,
+                angle: currentAngle,
+                safety: safetyLevel,
+                redBy: redLightTriggeredBy
+            });
+            updatePartnerBadge(true);
+        };
+
+        window.startAsGuest = function() {
+            const input = document.getElementById('room-input').value.trim().toUpperCase();
+            if (input.length !== 6) {
+                document.getElementById('lobby-status').innerText = "Please enter the 6-character room code.";
+                return;
+            }
+            isHost = false;
+            myRole = 'guest';
+            roomCode = input;
+            document.getElementById('lobby-status').innerText = "Connecting to host...";
+
+            peer = new Peer();
+            peer.on('open', () => {
+                connectToHost();
+            });
+
+            peer.on('error', () => {
+                document.getElementById('lobby-status').innerText = "Could not find room. Check code or ask host to stay on page.";
+            });
+        };
+
+        function connectToHost() {
+            conn = peer.connect("ldsync-" + roomCode, { reliable: true });
+            document.getElementById('lobby-status').innerText = "Waiting for host approval...";
+            setupConnectionHandlers(conn);
+        }
+
+        function setupConnectionHandlers(connection) {
+            connection.on('data', (data) => {
+                if (data.type === 'APPROVED') {
+                    document.getElementById('setup-screen').classList.add('hidden');
+                    document.getElementById('app-screen').classList.remove('hidden');
+                    document.getElementById('room-code-display').innerText = roomCode;
+                    currentAngle = data.angle || 0;
+                    document.getElementById('wheel-group').style.transform = `rotate(${currentAngle}deg)`;
+                    applyModeUI(data.mode);
+                    if (data.safety) applySafetyUI(data.safety, data.redBy);
+                    updatePartnerBadge(true);
+                }
+                else if (data.type === 'REJECTED') {
+                    alert(data.reason);
+                    location.reload();
+                }
+                else if (data.type === 'MODE_CHANGE') {
+                    applyModeUI(data.mode);
+                }
+                else if (data.type === 'REQUEST_SPIN' && isHost) {
+                    if (!isSpinning && safetyLevel !== 'red') {
+                        executeHostSpin('guest');
+                    }
+                }
+                else if (data.type === 'SPIN_RESULT') {
+                    spinnerRole = data.spinnerRole;
+                    animateWheel(data.targetAngle, data.cards);
+                }
+                else if (data.type === 'SELECT_CARD') {
+                    selectedCardIndex = data.index;
+                    openPromptModal(currentScratchCards[selectedCardIndex]);
+                }
+                else if (data.type === 'COMPLETE_TASK') {
+                    closeModalLocally(true);
+                }
+                else if (data.type === 'SAFETY') {
+                    applySafetyUI(data.level, data.redBy);
+                }
+            });
+
+            connection.on('close', () => {
+                updatePartnerBadge(false);
+                if (!isHost) {
+                    setTimeout(() => {
+                        if (!conn || !conn.open) connectToHost();
+                    }, 2500);
+                }
+            });
+        }
+
+        function updatePartnerBadge(connected) {
+            const badge = document.getElementById('partner-status-badge');
+            if (connected) {
+                badge.innerText = "2/2 Connected";
+                badge.className = "px-2.5 py-1 bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 rounded-full text-[10px] font-medium";
+            } else {
+                badge.innerText = isHost ? "Waiting for Partner..." : "Reconnecting...";
+                badge.className = "px-2.5 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded-full text-[10px] font-medium animate-pulse";
+            }
+        }
+
+        window.kickPartner = function() {
+            if (conn) {
+                conn.send({ type: 'REJECTED', reason: 'Disconnected by host.' });
+                setTimeout(() => conn.close(), 200);
+                conn = null;
+                updatePartnerBadge(false);
+            }
+        };
+
+        window.hostSetMode = function(modeKey) {
+            if (!isHost || isSpinning) return;
+            if (safetyLevel === 'red') {
+                alert("Red Light is active! Clear status before changing modes.");
+                return;
+            }
+            applyModeUI(modeKey);
+            if (conn && conn.open) conn.send({ type: 'MODE_CHANGE', mode: modeKey });
+        };
+
+        function applyModeUI(modeKey) {
+            currentMode = modeKey;
+            const mode = MODES[modeKey];
+
+            ['playful', 'seductive', 'dark'].forEach(m => {
+                const btn = document.getElementById('mode-btn-' + m);
+                if (btn) {
+                    btn.className = m === modeKey
+                        ? "py-1.5 rounded-xl text-[11px] font-bold bg-white text-slate-900 shadow transition cursor-pointer active:scale-95"
+                        : "py-1.5 rounded-xl text-[11px] font-medium bg-white/10 text-white hover:bg-white/25 transition cursor-pointer active:scale-95";
+                }
+            });
+
+            document.getElementById('app-background').className = `min-h-screen bg-gradient-to-br ${mode.bg} flex flex-col items-center justify-between p-4 pb-8`;
+            render4SliceWheel(mode);
+        }
+
+        function render4SliceWheel(mode) {
+            const svg = document.getElementById('wheel-svg');
+            svg.innerHTML = '';
+            const sliceAngle = 90;
+
+            mode.categories.forEach((catName, i) => {
+                const startAngle = i * sliceAngle - 90;
+                const endAngle = startAngle + sliceAngle;
+
+                const x1 = 200 + 190 * Math.cos(Math.PI * startAngle / 180);
+                const y1 = 200 + 190 * Math.sin(Math.PI * startAngle / 180);
+                const x2 = 200 + 190 * Math.cos(Math.PI * endAngle / 180);
+                const y2 = 200 + 190 * Math.sin(Math.PI * endAngle / 180);
+
+                const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                path.setAttribute("d", `M 200 200 L ${x1} ${y1} A 190 190 0 0 1 ${x2} ${y2} Z`);
+                path.setAttribute("fill", mode.colors[i]);
+                path.setAttribute("stroke", "#ffffff33");
+                path.setAttribute("stroke-width", "2");
+                svg.appendChild(path);
+
+                const textAngle = startAngle + 45;
+                const tx = 200 + 115 * Math.cos(Math.PI * textAngle / 180);
+                const ty = 200 + 115 * Math.sin(Math.PI * textAngle / 180);
+
+                const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                text.setAttribute("x", tx);
+                text.setAttribute("y", ty);
+                text.setAttribute("fill", "#ffffff");
+                text.setAttribute("font-size", "18");
+                text.setAttribute("font-weight", "800");
+                text.setAttribute("letter-spacing", "1");
+                text.setAttribute("text-anchor", "middle");
+                text.setAttribute("dominant-baseline", "central");
+                text.setAttribute("transform", `rotate(${textAngle + 90}, ${tx}, ${ty})`);
+                text.textContent = catName.toUpperCase();
+                svg.appendChild(text);
+            });
+        }
+
+        window.requestSpin = function() {
+            if (isSpinning) return;
+
+            if (safetyLevel === 'red') {
+                alert("Red Light is active! The person who triggered it must reset it to green.");
+                return;
+            }
+
+            if (!document.getElementById('scratch-modal').classList.contains('hidden') ||
+                !document.getElementById('result-modal').classList.contains('hidden')) {
+                return;
+            }
+
+            if (isHost) {
+                executeHostSpin('host');
+            } else if (conn && conn.open) {
+                conn.send({ type: 'REQUEST_SPIN' });
+            }
+        };
+
+        function executeHostSpin(sRole) {
+            spinnerRole = sRole;
+            const mode = MODES[currentMode];
+            const catIndex = Math.floor(Math.random() * 4);
+            const chosenCategory = mode.categories[catIndex];
+
+            const catPrompts = mode.prompts
+                .map((p, idx) => ({ ...p, globalIdx: idx }))
+                .filter(p => p.cat === chosenCategory);
+
+            let available = catPrompts.filter(p => !usedPrompts[currentMode].has(p.globalIdx));
+            if (available.length < 3) {
+                catPrompts.forEach(p => usedPrompts[currentMode].delete(p.globalIdx));
+                available = catPrompts;
+            }
+
+            const shuffled = [...available].sort(() => 0.5 - Math.random());
+            const selectedCards = shuffled.slice(0, 3);
+            selectedCards.forEach(c => usedPrompts[currentMode].add(c.globalIdx));
+
+            const sliceCenterOffset = (catIndex * 90) + 45;
+            const jitter = (Math.random() * 50) - 25;
+            const targetRotation = (360 - sliceCenterOffset + jitter) % 360;
+            const currentMod = currentAngle % 360;
+            const delta = (targetRotation - currentMod + 360) % 360;
+            const finalAngle = currentAngle + 1800 + delta;
+
+            if (conn && conn.open) {
+                conn.send({ type: 'SPIN_RESULT', targetAngle: finalAngle, cards: selectedCards, spinnerRole: spinnerRole });
+            }
+            animateWheel(finalAngle, selectedCards);
+        }
+
+        function animateWheel(targetAngle, cards) {
+            if (spinTimer) clearTimeout(spinTimer);
+            isSpinning = true;
+
+            const spinBtn = document.getElementById('spin-btn');
+            if (spinBtn) spinBtn.classList.add('opacity-50', 'pointer-events-none');
+
+            const wheelGroup = document.getElementById('wheel-group');
+            wheelGroup.style.transition = 'transform 3.5s cubic-bezier(0.15, 0.90, 0.10, 1.0)';
+            wheelGroup.style.transform = `rotate(${targetAngle}deg)`;
+
+            spinTimer = setTimeout(() => {
+                isSpinning = false;
+                currentAngle = targetAngle;
+                if (spinBtn && safetyLevel !== 'red') {
+                    spinBtn.classList.remove('opacity-50', 'pointer-events-none');
+                }
+                showScratchModal(cards);
+            }, 3550);
+        }
+
+        function showScratchModal(cards) {
+            currentScratchCards = cards;
+            selectedCardIndex = null;
+
+            document.getElementById('scratch-category-badge').innerText = cards[0].cat;
+            
+            const container = document.getElementById('cards-container');
+            container.innerHTML = '';
+
+            const amISpinner = (spinnerRole === myRole);
+
+            if (amISpinner) {
+                document.getElementById('scratch-modal-title').innerText = "Pick Your Secret Card";
+                document.getElementById('scratch-modal-subtitle').innerText = "Tap one of the mystery cards below to select it blindly.";
+
+                cards.forEach((_, idx) => {
+                    const cardEl = document.createElement('div');
+                    cardEl.id = `scratch-card-${idx}`;
+                    cardEl.className = "h-16 bg-indigo-950 border-2 border-indigo-500/50 rounded-2xl p-3 flex items-center justify-center cursor-pointer relative overflow-hidden transition hover:border-indigo-400 pointer-events-auto shadow-lg";
+                    cardEl.onclick = (e) => {
+                        e.stopPropagation();
+                        selectSecretCard(idx);
+                    };
+
+                    cardEl.innerHTML = `<span class="text-xs font-bold uppercase tracking-wider text-indigo-200">✨ Mystery Card ${idx + 1}</span>`;
+                    container.appendChild(cardEl);
+                });
+
+                document.getElementById('scratch-action-area').innerHTML = `<p class="text-[11px] text-indigo-300 italic">Tap a card to select it blindly.</p>`;
+            } else {
+                document.getElementById('scratch-modal-title').innerText = "Partner's Turn to Pick";
+                document.getElementById('scratch-modal-subtitle').innerText = "Your partner spun the wheel and is currently choosing a secret card.";
+
+                cards.forEach((_, idx) => {
+                    const cardEl = document.createElement('div');
+                    cardEl.className = "h-16 bg-slate-800/80 border border-slate-700 rounded-2xl p-3 flex items-center justify-center";
+                    cardEl.innerHTML = `<span class="text-xs font-medium text-slate-400 animate-pulse">🔒 Secret Card ${idx + 1} (Hidden)</span>`;
+                    container.appendChild(cardEl);
+                });
+
+                document.getElementById('scratch-action-area').innerHTML = `<p class="text-[11px] text-amber-300 italic">Waiting for partner's pick...</p>`;
+            }
+
+            document.getElementById('scratch-modal').classList.remove('hidden');
+
+            try {
+                if (typeof confetti === 'function' && amISpinner) {
+                    confetti({ particleCount: 50, spread: 40, origin: { y: 0.6 } });
+                }
+            } catch (e) {}
+        }
+
+        window.selectSecretCard = function(idx) {
+            const amISpinner = (spinnerRole === myRole);
+            if (!amISpinner) return;
+
+            selectedCardIndex = idx;
+
+            currentScratchCards.forEach((_, i) => {
+                const cardEl = document.getElementById(`scratch-card-${i}`);
+                if (cardEl) {
+                    if (i === idx) {
+                        cardEl.className = "h-16 bg-emerald-900 border-2 border-emerald-400 rounded-2xl p-3 flex items-center justify-center cursor-pointer relative overflow-hidden ring-2 ring-emerald-400 shadow-xl transition";
+                        cardEl.innerHTML = `<span class="text-xs font-bold uppercase tracking-wider text-emerald-200">✓ Mystery Card ${idx + 1} Selected</span>`;
+                    } else {
+                        cardEl.className = "h-16 bg-slate-800 border border-slate-700 rounded-2xl p-3 flex items-center justify-center cursor-pointer relative overflow-hidden opacity-60 transition";
+                        cardEl.innerHTML = `<span class="text-xs font-medium text-slate-400">Mystery Card ${i + 1}</span>`;
+                    }
+                }
+            });
+
+            document.getElementById('scratch-action-area').innerHTML = `
+                <button onclick="confirmCardSelection()" class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 font-bold rounded-2xl text-xs transition cursor-pointer shadow-lg active:scale-95">
+                    Confirm & Reveal Card ${idx + 1}
+                </button>
+            `;
+        };
+
+        window.confirmCardSelection = function() {
+            if (selectedCardIndex === null) return;
+            document.getElementById('scratch-modal').classList.add('hidden');
+
+            const chosen = currentScratchCards[selectedCardIndex];
+            if (conn && conn.open) {
+                conn.send({ type: 'SELECT_CARD', index: selectedCardIndex });
+            }
+            openPromptModal(chosen);
+        };
+
+        function openPromptModal(prompt) {
+            document.getElementById('result-category-badge').innerText = prompt.cat || "Prompt";
+            document.getElementById('result-title').innerText = prompt.title || "Task";
+            document.getElementById('result-desc').innerText = prompt.desc || "";
+
+            const roleBadge = document.getElementById('result-role-badge');
+            if (prompt.roleShift) {
+                roleBadge.classList.remove('hidden');
+            } else {
+                roleBadge.classList.add('hidden');
+            }
+
+            const choicesContainer = document.getElementById('choices-container');
+            if (prompt.choices && prompt.choices.length > 0) {
+                choicesContainer.innerHTML = `<span class="text-[10px] uppercase tracking-wider text-indigo-300 block mb-1 font-semibold">Tap a choice below so you don't have to think:</span>`;
+                prompt.choices.forEach((choice) => {
+                    choicesContainer.innerHTML += `
+                        <div onclick="selectChoiceItem(this)" class="p-2.5 bg-slate-800/90 border border-slate-700 hover:border-indigo-500 rounded-xl text-xs text-slate-200 cursor-pointer transition active:scale-[0.98]">
+                            ✓ ${choice}
+                        </div>
+                    `;
+                });
+                choicesContainer.classList.remove('hidden');
+            } else {
+                choicesContainer.classList.add('hidden');
+                choicesContainer.innerHTML = '';
+            }
+
+            const revealedList = document.getElementById('revealed-cards-list');
+            revealedList.innerHTML = `<span class="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-semibold">All 3 Drawn Cards (Revealed):</span>`;
+            currentScratchCards.forEach((card, idx) => {
+                const isChosen = idx === selectedCardIndex;
+                revealedList.innerHTML += `
+                    <div class="p-2 rounded-xl text-[11px] ${isChosen ? 'bg-indigo-600/30 border border-indigo-400 text-white font-medium' : 'bg-slate-800/60 text-slate-400'}">
+                        <span class="font-bold">${idx + 1}. ${card.title}</span> ${isChosen ? ' (Chosen)' : ''}
+                    </div>
+                `;
+            });
+
+            const amISpinner = (spinnerRole === myRole);
+            const actionArea = document.getElementById('modal-action-area');
+
+            if (!amISpinner) {
+                actionArea.innerHTML = `
+                    <button onclick="completeTask()" class="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 font-bold rounded-2xl text-xs transition cursor-pointer shadow-lg active:scale-95 text-white">
+                        ✓ Mark Task as Completed Successfully
+                    </button>
+                `;
+            } else {
+                actionArea.innerHTML = `<p class="text-xs text-amber-300 italic bg-amber-500/10 border border-amber-500/20 py-3 px-3 rounded-2xl">Waiting for partner to review and verify this task...</p>`;
+            }
+
+            document.getElementById('result-modal').classList.remove('hidden');
+        }
+
+        window.selectChoiceItem = function(element) {
+            const allChoices = document.querySelectorAll('#choices-container > div');
+            allChoices.forEach(el => el.classList.remove('bg-indigo-600/40', 'border-indigo-400', 'text-white'));
+            element.classList.add('bg-indigo-600/40', 'border-indigo-400', 'text-white');
+        };
+
+        window.completeTask = function() {
+            if (conn && conn.open) {
+                conn.send({ type: 'COMPLETE_TASK' });
+            }
+            closeModalLocally(true);
+        };
+
+        function closeModalLocally(withConfetti = false) {
+            document.getElementById('result-modal').classList.add('hidden');
+            document.getElementById('scratch-modal').classList.add('hidden');
+            document.getElementById('choices-container').classList.add('hidden');
+
+            if (withConfetti) {
+                try {
+                    if (typeof confetti === 'function') {
+                        confetti({ particleCount: 80, spread: 70, origin: { y: 0.5 } });
+                    }
+                } catch (e) {}
+            }
+        }
+
+        window.triggerSafety = function(level) {
+            // STRICT SAFETY LOCK: If red light is active, ONLY the person who triggered it can clear/reset it to green.
+            if (safetyLevel === 'red' && level !== 'red') {
+                if (redLightTriggeredBy && redLightTriggeredBy !== myRole) {
+                    alert("Only the partner who triggered the Red Light can reset it to green once you've both checked in.");
+                    return;
+                }
+            }
+
+            if (level === 'red') {
+                redLightTriggeredBy = myRole;
+            } else if (level === 'green') {
+                redLightTriggeredBy = null;
+            }
+
+            applySafetyUI(level, redLightTriggeredBy);
+            if (conn && conn.open) conn.send({ type: 'SAFETY', level: level, redBy: redLightTriggeredBy });
+        };
+
+        function applySafetyUI(level, redBy) {
+            safetyLevel = level;
+            redLightTriggeredBy = redBy;
+
+            ['green', 'yellow', 'red'].forEach(l => {
+                const btn = document.getElementById('safety-' + l);
+                if (btn) btn.classList.toggle('ring-2', l === level);
+                if (btn) btn.classList.toggle('ring-white', l === level);
+            });
+
+            const isRed = level === 'red';
+            document.getElementById('red-alert-banner').classList.toggle('hidden', !isRed);
+
+            const spinBtn = document.getElementById('spin-btn');
+            if (spinBtn) {
+                spinBtn.classList.toggle('opacity-50', isRed);
+                spinBtn.classList.toggle('cursor-not-allowed', isRed);
+            }
+
+            if (isRed) {
+                closeModalLocally(false);
+            }
+        }
+
+        window.copyCode = function() {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(roomCode).then(() => {
+                    alert("Room code " + roomCode + " copied!");
+                }).catch(() => {
+                    prompt("Copy your room code:", roomCode);
+                });
+            } else {
+                prompt("Copy your room code:", roomCode);
+            }
+        };
+    </script>
+</body>
+</html>
